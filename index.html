@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MyJournals</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E📓%3C/text%3E%3C/svg%3E">
+<style>
+:root{--bg:#faf6ef;--surface:#fff;--ink:#2a2118;--muted:#7a6d5e;--accent:#b4572b;--line:#e8dfd0;--shadow:0 8px 30px rgba(60,40,20,.10);color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#16120e;--surface:#211b15;--ink:#f1e8da;--muted:#a89a88;--accent:#e08a5b;--line:#35291f;--shadow:0 8px 30px rgba(0,0,0,.4);color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#16120e;--surface:#211b15;--ink:#f1e8da;--muted:#a89a88;--accent:#e08a5b;--line:#35291f;--shadow:0 8px 30px rgba(0,0,0,.4);color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.6 Georgia,"Times New Roman",serif}
+header{text-align:center;padding:64px 20px 36px;background:radial-gradient(circle at 50% 0,color-mix(in srgb,var(--accent) 18%,transparent),transparent 65%)}
+h1{font-size:clamp(2.4rem,7vw,4rem);margin:0;letter-spacing:-.02em}h1 span{color:var(--accent);font-style:italic}
+header p{color:var(--muted);max-width:520px;margin:12px auto 0}
+main{max-width:1000px;margin:0 auto;padding:10px 20px 60px}
+input,textarea,button{font:inherit}
+input[type=search],input[type=text],input[type=password],input[type=date],textarea{width:100%;padding:11px 14px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)}
+.bar{margin:0 0 20px}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 20px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:20px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:22px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:8px;border-top:4px solid var(--accent)}
+.card h3{margin:0;font-size:1.25rem}.card time{color:var(--muted);font:.85rem system-ui,sans-serif}
+.card p{margin:0;color:var(--muted);font-size:.95rem;flex:1}
+.cv{width:calc(100% + 44px);max-width:none;margin:-22px -22px 6px;height:150px;object-fit:cover;border-radius:10px 10px 0 0}
+.row{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+button,a.btn{cursor:pointer;border:0;border-radius:9px;padding:9px 16px;background:var(--accent);color:#fff;font:.9rem system-ui,sans-serif;text-decoration:none;display:inline-block}
+.alt{background:transparent!important;color:var(--ink)!important;border:1px solid var(--line)!important}
+.del{background:transparent!important;color:#c0392b!important;border:1px solid var(--line)!important}
+.chip{background:transparent;color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:6px 14px}.chip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.empty{text-align:center;color:var(--muted);padding:60px 0;grid-column:1/-1}
+footer{text-align:center;color:var(--muted);font:.85rem system-ui,sans-serif;padding:20px 20px 40px}footer a{color:var(--muted);cursor:pointer;text-decoration:underline}
+dialog{border:0;border-radius:16px;padding:0;background:var(--surface);color:var(--ink);width:min(960px,96vw);height:min(88vh,900px);box-shadow:var(--shadow)}
+dialog::backdrop{background:rgba(0,0,0,.55)}
+.dh{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);gap:10px}.dh b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+iframe{width:100%;height:calc(100% - 58px);border:0}
+.panel{background:var(--surface);border:1px dashed var(--accent);border-radius:14px;padding:22px;margin-bottom:28px;display:grid;gap:12px}
+.panel h2{margin:0;font-size:1.2rem}.note{color:var(--muted);font:.85rem system-ui,sans-serif}
+</style>
+</head>
+<body>
+<header><h1>My<span>Journals</span></h1><p>A quiet place to read my writing. Browse, read online, or download any journal as a PDF.</p></header>
+<main>
+  <div id="admin"></div>
+  <div class="bar"><input type="search" id="q" placeholder="Search journals…" aria-label="Search journals"></div>
+  <div id="chips" class="chips"></div>
+  <div id="list" class="grid"></div>
+</main>
+<footer>© MyJournals · Read-only for visitors · <a id="themeLink">Theme</a> · <a id="adminLink">Admin</a></footer>
+<dialog id="viewer"><div class="dh"><b id="vt"></b><span class="row" style="margin:0"><a class="btn" id="vd" download>Download PDF</a><button class="alt" id="vc">Close</button></span></div><iframe id="vf" title="Journal PDF"></iframe></dialog>
+
+<script>
+/* ===== SETTINGS: your GitHub username and repository name ===== */
+const OWNER='willy306', REPO='myjournals';
+
+let journals=[], cat='', tok=sessionStorage.getItem('mj_tok')||'', isAdmin=false;
+const $=id=>document.getElementById(id);
+const esc=s=>{const d=document.createElement('div');d.textContent=s;return d.innerHTML.replace(/"/g,'&quot;')};
+const API='https://api.github.com/repos/'+OWNER+'/'+REPO+'/contents/';
+
+async function load(){
+  try{const r=await fetch('journals.json?'+Date.now());journals=r.ok?await r.json():[]}catch(e){journals=[]}
+  render();
+}
+function render(){
+  const q=$('q').value.toLowerCase();
+  const cats=[...new Set(journals.map(j=>j.cat).filter(Boolean))];
+  if(cat&&!cats.includes(cat))cat='';
+  $('chips').innerHTML=cats.length?['All',...cats].map(c=>`<button class="chip${(c==='All'?!cat:c===cat)?' on':''}" data-c="${esc(c)}">${esc(c)}</button>`).join(''):'';
+  const items=journals.filter(j=>(!cat||j.cat===cat)&&(j.title+' '+(j.desc||'')).toLowerCase().includes(q));
+  $('list').innerHTML=items.length?items.map(j=>`<article class="card">${j.cover?`<img class="cv" src="${esc(j.cover)}" alt="">`:''}<time>${esc(j.date||'')}${j.cat?' · '+esc(j.cat):''}</time><h3>${esc(j.title)}</h3><p>${esc(j.desc||'')}</p><div class="row"><button data-r="${esc(j.id)}">Read</button><a class="btn alt" href="${esc(j.pdf)}" download>Download PDF</a>${isAdmin?`<button class="del" data-x="${esc(j.id)}">Delete</button>`:''}</div></article>`).join(''):`<div class="empty">${journals.length?'No journals match your search.':'No journals published yet. Please check back soon.'}</div>`;
+}
+$('q').oninput=render;
+$('chips').onclick=e=>{const c=e.target.dataset.c;if(c!==undefined){cat=c==='All'?'':c;render()}};
+$('themeLink').onclick=()=>{const r=document.documentElement;const dark=r.dataset.theme?r.dataset.theme==='dark':matchMedia('(prefers-color-scheme:dark)').matches;r.dataset.theme=dark?'light':'dark'};
+$('list').onclick=e=>{
+  const r=e.target.dataset.r,x=e.target.dataset.x;
+  if(r){const j=journals.find(j=>j.id===r);$('vt').textContent=j.title;$('vf').src=j.pdf;$('vd').href=j.pdf;$('viewer').showModal()}
+  if(x&&isAdmin&&confirm('Delete this journal permanently?'))del(x);
+};
+$('vc').onclick=()=>{$('viewer').close();$('vf').src='about:blank'};
+
+/* ===== Admin: secured by GitHub. Only a token from your GitHub account can write to the repo. ===== */
+async function gh(path,method,body){
+  const r=await fetch(path.startsWith('http')?path:API+path,{method:method||'GET',headers:{Authorization:'Bearer '+tok,Accept:'application/vnd.github+json'},body:body?JSON.stringify(body):undefined});
+  if(r.status===404&&(!method||method==='GET'))return null;
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(r.status+' '+(j.message||'request failed'));
+  return j;
+}
+const b64text=t=>btoa(unescape(encodeURIComponent(t)));
+const fromB64=b=>decodeURIComponent(escape(atob(b.replace(/\n/g,''))));
+const fileB64=f=>new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result.split(',')[1]);fr.readAsDataURL(f)});
+async function getList(){const f=await gh('journals.json');return f?{list:JSON.parse(fromB64(f.content)),sha:f.sha}:{list:[],sha:undefined}}
+async function putList(list,sha,msg){await gh('journals.json','PUT',{message:msg,content:b64text(JSON.stringify(list,null,1)),sha})}
+
+function loginUI(msg){
+  $('admin').innerHTML=`<div class="panel"><h2>🔒 Admin login</h2>
+  <p class="note">Paste your GitHub personal access token (fine-grained, access to the <b>${OWNER}/${REPO}</b> repo with <b>Contents: Read and write</b>). It is kept only in this browser tab and sent only to GitHub.</p>
+  <input type="password" id="tk" placeholder="GitHub token" autocomplete="off">
+  <div class="row"><button id="lg">Log in</button><button class="alt" id="cl">Close</button></div><div class="note" id="msg">${msg||''}</div></div>`;
+  $('cl').onclick=()=>$('admin').innerHTML='';
+  $('lg').onclick=async()=>{tok=$('tk').value.trim();$('msg').textContent='Checking…';if(await verify())panelUI();else{tok='';sessionStorage.removeItem('mj_tok');$('msg').textContent='Login failed. Only the repository owner\u2019s token works.'}};
+}
+async function verify(){
+  try{
+    const u=await gh('https://api.github.com/user');
+    const r=await gh('https://api.github.com/repos/'+OWNER+'/'+REPO);
+    isAdmin=u.login.toLowerCase()===OWNER.toLowerCase()&&!!(r&&r.permissions&&r.permissions.push);
+  }catch(e){isAdmin=false}
+  if(isAdmin)sessionStorage.setItem('mj_tok',tok);
+  render();return isAdmin;
+}
+function panelUI(){
+  $('admin').innerHTML=`<div class="panel"><h2>Admin: upload a journal (PDF only)</h2>
+  <input type="text" id="t" placeholder="Title" maxlength="120"><input type="date" id="dt">
+  <textarea id="ds" rows="2" placeholder="Short description" maxlength="300"></textarea>
+  <input type="text" id="cat" placeholder="Category (e.g. Travel, Thoughts)" maxlength="40">
+  <label class="note" for="cv">Cover image (optional, JPG/PNG)</label><input type="file" id="cv" accept="image/jpeg,image/png">
+  <label class="note" for="f">Journal PDF</label><input type="file" id="f" accept="application/pdf,.pdf">
+  <div class="row"><button id="up">Upload &amp; publish</button><button class="alt" id="lo">Log out</button><button class="alt" id="cl">Close</button></div>
+  <div class="note" id="msg">Max 20 MB per PDF. New journals appear for visitors in about a minute.</div></div>`;
+  $('dt').value=new Date().toISOString().slice(0,10);
+  $('cl').onclick=()=>$('admin').innerHTML='';
+  $('lo').onclick=()=>{tok='';isAdmin=false;sessionStorage.removeItem('mj_tok');$('admin').innerHTML='';render()};
+  $('up').onclick=upload;
+}
+$('adminLink').onclick=async()=>{
+  $('admin').scrollIntoView({behavior:'smooth'});
+  if(tok&&await verify())panelUI();else loginUI();
+};
+async function upload(){
+  const m=$('msg'),f=$('f').files[0],t=$('t').value.trim(),c=$('cv').files[0];
+  if(!t||!f){m.textContent='Please add a title and choose a PDF.';return}
+  if(f.size>20*1024*1024){m.textContent='That PDF is over 20 MB.';return}
+  const head=new Uint8Array(await f.slice(0,4).arrayBuffer());
+  if(String.fromCharCode(...head)!=='%PDF'){m.textContent='That file is not a valid PDF.';return}
+  if(c&&(!/^image\/(jpeg|png)$/.test(c.type)||c.size>1024*1024)){m.textContent='Cover must be a JPG/PNG under 1 MB.';return}
+  try{
+    m.textContent='Uploading…';
+    const id='j'+Date.now().toString(36),entry={id,title:t,date:$('dt').value,desc:$('ds').value.trim(),cat:$('cat').value.trim(),pdf:'pdfs/'+id+'.pdf'};
+    await gh(entry.pdf,'PUT',{message:'Add journal: '+t,content:await fileB64(f)});
+    if(c){entry.cover='covers/'+id+(c.type==='image/png'?'.png':'.jpg');await gh(entry.cover,'PUT',{message:'Add cover: '+t,content:await fileB64(c)})}
+    const {list,sha}=await getList();list.unshift(entry);await putList(list,sha,'Update journals list');
+    journals=list;render();panelUI();$('msg').textContent='✅ Published. It will be live for visitors in about a minute.';
+  }catch(e){m.textContent='Error: '+e.message}
+}
+async function del(id){
+  try{
+    const {list,sha}=await getList(),j=list.find(x=>x.id===id);if(!j)return;
+    await putList(list.filter(x=>x.id!==id),sha,'Remove journal: '+j.title);
+    for(const p of [j.pdf,j.cover].filter(Boolean)){const f=await gh(p);if(f)await gh(p,'DELETE',{message:'Delete '+p,sha:f.sha})}
+    journals=list.filter(x=>x.id!==id);render();
+  }catch(e){alert('Error: '+e.message)}
+}
+load();
+if(tok)verify();
+</script>
+</body>
+</html>
